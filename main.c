@@ -8,11 +8,12 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <stdlib.h>
+#include <string.h>
 
 #pragma clang diagnostic push
 #pragma clang diagnostic ignored "-Wmissing-noreturn"
 #define SIZE_OF_LINE 151
-#define BUFFER_SIZE 10
+#define BUFFER_SIZE 460
 
 /**
  *
@@ -24,46 +25,48 @@ int main(int argc, char **argv) {
     if (argc != 3) {
         perror("PARAMS ERROR\n");
     }
-    char buffer[BUFFER_SIZE];
-    char path[SIZE_OF_LINE];
-    char input[SIZE_OF_LINE];
-    char right[SIZE_OF_LINE];
-
     int in;
     if ((in = open(argv[2], O_RDONLY)) == -1) {
         printf("ERROR\n");
         exit(-1);
     }
-    size_t reader = 0;
-    int index = 0;
-    int subIndex = 0;
-    int status = 1;
-    char c;
-    while (1) {
-        if ((index % BUFFER_SIZE) == 0) {
-            reader = read(in, buffer, sizeof(buffer));
-            if (reader < 0) {
-                break;
-            }
-        }
-        c = buffer[index & BUFFER_SIZE];
-        if (c == '\n') {
-            status++;
-            index++;
-            subIndex = 0;
-            continue;
-        }
-        if (status == 1) {
-            path[subIndex++] = c;
-        } else if (status == 2) {
-            input[subIndex++] = c;
-        } else if (status == 3) {
-            right[subIndex++] = c;
-        }
+    char buffer[BUFFER_SIZE];
+    char *path;
+    char *input;
+    char *right;
+    read(in, buffer, 480);
+    const char del[2] = {'\n', '\r'};
+    path = strtok(buffer, del);
+    input = strtok(NULL, del);
+    right = strtok(NULL, del);
 
-    }//end of while
+    int pathFile;
+    if ((pathFile = open(path, O_RDONLY)) == -1) {
+        close(in);
+        printf("ERROR\n");
+        exit(-1);
+    }
+    int inputFile;
+    if ((inputFile = open(input, O_RDONLY)) == -1) {
+        close(in);
+        close(pathFile);
+        printf("ERROR\n");
+        exit(-1);
+    }
+    int rightFile;
+    if ((rightFile = open(right, O_RDONLY)) == -1) {
+        close(in);
+        close(pathFile);
+        close(inputFile);
+        printf("ERROR\n");
+        exit(-1);
+    }
 
 
+    close(pathFile);
+    close(inputFile);
+    close(rightFile);
+    close(in);
     return 0;
 }
 
