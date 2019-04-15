@@ -26,18 +26,53 @@
 #define CMP "comp.out"
 #define CMP_PATH "./comp.out"
 
+/**
+ * Recursiv func to find in dir
+ * @param dr source dir
+ * @param father father of this dir(=name)
+ * @param right the eight answers
+ */
 void findInDir(DIR *dr, char *father, char *right);
 
+/**
+ * compile c file
+ * @param path the path of the c file
+ */
 void makeCompile(char *path);
 
+/**
+ * work on c file
+ * @param path to the file
+ * @param right the right answers
+ * @param name of the file
+ */
 void cFile(char *path, char *right, char *name);
 
+/**
+ * run the c file
+ * @param path path
+ */
 void runCFile(char *path);
-
+/**
+ * check if file is c file
+ * @param name name of file
+ * @return true if c file
+ */
 bool checkForC(char *name);
 
+/**
+ * run the comp.out program
+ * @param stu the student file
+ * @param right the right answers
+ */
 void checkSemi(char *stu, char *right);
 
+/**
+ * write entry to the result file
+ * @param name of student
+ * @param grade of student
+ * @param note of student
+ */
 void addEntry(char *name, char *grade, char *note);
 
 int resFile = 0;
