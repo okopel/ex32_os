@@ -79,6 +79,7 @@ int main(int argc, char **argv) {
         close(inputFile);
         perror("ERROR right\n");
         exit(-1);
+
     }
     getcwd(path, sizeof(path));
     DIR *dr = opendir(path);
