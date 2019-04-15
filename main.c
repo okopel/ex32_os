@@ -342,7 +342,8 @@ void runCFile(char *path) {
     }
     close(fdin);
     close(fdout);
-    for (int i = 0; i < TIMEOUT; i++) {
+    int i;
+    for (i = 0; i < TIMEOUT; i++) {
         sleep(1);
         if ((waitpid(pid, &status, WNOHANG)) != 0) {//finish case
             return;
@@ -367,7 +368,7 @@ void addEntry(char *name, char *grade, char *note) {
         errorInSystemCall();
         exit(-1);
     }
-    printf("we saved the entery: %s", entry);
+    // printf("we saved the entery: %s", entry);
 }
 
 void errorInSystemCall() {
