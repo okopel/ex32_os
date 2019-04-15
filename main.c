@@ -22,17 +22,17 @@
 #define RESULT "results.csv"
 #define STU_FILE_NAME "student.out"
 #define STU_FILE_NAME_PATH "./student.out"
-#define STD_OUTPUT "output_of_student"
+#define STD_OUTPUT "./output_of_student"
 #define CMP "comp.out"
 #define CMP_PATH "./comp.out"
 
 /**
  * Recursiv func to find in dir
  * @param dr source dir
- * @param father father of this dir(=name)
+ * @param pathOfFather father of this dir(=name)
  * @param right the eight answers
  */
-void findInDir(DIR *dr, char *father, char *right);
+void findInDir(DIR *dr, char *pathOfFather, char *nameOfFather, char *right);
 
 /**
  * compile c file
@@ -44,9 +44,9 @@ void makeCompile(char *path);
  * work on c file
  * @param path to the file
  * @param right the right answers
- * @param name of the file
+ * @param nameOfFather of the file
  */
-void cFile(char *path, char *right, char *name);
+void cFile(char *path, char *right, char *nameOfFather);
 
 /**
  * run the c file
@@ -75,20 +75,24 @@ void checkSemi(char *stu, char *right);
  */
 void addEntry(char *name, char *grade, char *note);
 
+void findOfOneChild(char *pathOfChild, DIR *dr, char *pathOfMain, char *_name, char *rightAnswers);
+
+void findInMainDir(char *pathOfMain, char *rightAnswers);
+
 int resFile = 0;
 
 /**
  *
- * @param argc 3
- * @param argv [1]=name, [2]=path
+ * @param argc 2
+ * @param argv [1]=path
  * @return
  */
 int main(int argc, char **argv) {
-    if (argc != 3) {
+    if (argc < 2) {
         perror("PARAMS ERROR\n");
     }
     int in;
-    if ((in = open(argv[2], O_RDONLY)) == -1) {
+    if ((in = open(argv[1], O_RDONLY)) == -1) {
         perror("cant open file\n");
         exit(-1);
     }
@@ -96,96 +100,170 @@ int main(int argc, char **argv) {
     char *path;
     char *input;
     char *right;
-    read(in, buffer, 480);
+    read(in, buffer, BUFFER_SIZE);
     const char del[2] = {'\n', '\r'};
     path = strtok(buffer, del);
     input = strtok(NULL, del);
     right = strtok(NULL, del);
-
     int inputFile;
     if ((inputFile = open(input, O_RDONLY)) == -1) {
         close(in);
         perror("ERROR inputFile\n");
         exit(-1);
     }
-    int rightFile;
-    if ((rightFile = open(right, O_RDONLY)) == -1) {
-        close(in);
-        close(inputFile);
-        perror("ERROR right\n");
-        exit(-1);
-
-    }
-    getcwd(path, sizeof(path));
-    DIR *dr = opendir(path);
-    if (dr == NULL) {
-        perror("NULL DIR\n");
-        exit(-1);
-    }
-
     int results = open(RESULT, O_CREAT | O_RDWR | O_TRUNC, 0666);
     if (results < 0) {
         perror("ERROR IN RESULT\n");
         exit(-1);
     }
     resFile = results;
-    findInDir(dr, NULL, right);
 
+    int rightFile;
+    if ((rightFile = open(right, O_RDONLY)) == -1) {
+        close(in);
+        close(inputFile);
+        perror("ERROR right\n");
+        exit(-1);
+    }
 
-    closedir(dr);
+    findInMainDir(path, right);
+    printf("end of pro of %d\n", getpid());
+    //  closedir(dr);
     close(inputFile);
     close(rightFile);
     close(in);
     return 0;
 }
 
-
-void findInDir(DIR *dr, char *father, char *right) {
+void findInMainDir(char *pathOfMain, char *rightAnswers) {
+    //   getcwd(pathOfMain, sizeof(pathOfMain));
+    DIR *dr = opendir(pathOfMain);
     if (dr == NULL) {
-        return;
+        perror("CANT OPEN PATH\n");
+        exit(-1);
     }
     struct dirent *de;
-    while ((de = readdir(dr)) != NULL) {
-        if (de->d_type == 4) {
-            if ((father != NULL && strcmp(de->d_name, father) == 0) || (strcmp(de->d_name, ".") == 0) ||
+    while ((de = readdir(dr)) != NULL) {//move over students
+        if (de->d_type == 4) {//folderCase
+            if ((strcmp(de->d_name, pathOfMain) == 0) || (strcmp(de->d_name, ".") == 0) ||
                 (strcmp(de->d_name, "..") == 0)) {
                 continue;
             }
-            DIR *newDir = opendir(de->d_name);
-            findInDir(newDir, de->d_name, right);
-            closedir(newDir);
-            continue;
-        }
-        if (checkForC(de->d_name)) {
-            char buf[SIZE_OF_LINE];
-            realpath(father, buf);
-            strcat(buf, "/");
-            strcat(buf, de->d_name);
-            cFile(buf, right, father);
+            char pathOfChild[2 * SIZE_OF_LINE];
+            memset(pathOfChild, 0, sizeof(pathOfChild));
+            char newPathOfMain[2 * SIZE_OF_LINE];
+            memset(newPathOfMain, 0, sizeof(newPathOfMain));
+            strcat(newPathOfMain, pathOfMain);
+            strcat(newPathOfMain, "/");
+            strcat(newPathOfMain, de->d_name);
+            DIR *newDir = opendir(newPathOfMain);
+            findOfOneChild(pathOfChild, newDir, newPathOfMain, de->d_name, rightAnswers);
+            if (pathOfChild[0] == 0) {//there isnt C file
+                addEntry(de->d_name, "0", "NO_C_FILE");
+                continue;
+            } else {
+                cFile(pathOfChild, rightAnswers, de->d_name);
+
+            }
         }
     }
+
 }
 
-void cFile(char *path, char *right, char *name) {
+void findInDir(DIR *dr, char *pathOfFather, char *nameOfFather, char *right) {
+    if (dr == NULL) {
+        return;
+    }
+    bool flag = false;
+    struct dirent *de;
+    while ((de = readdir(dr)) != NULL) {
+        //  printf("look at: %s\n", de->d_name);//todo
+        if (de->d_type == 4) {
+            if ((pathOfFather != NULL && strcmp(de->d_name, pathOfFather) == 0) || (strcmp(de->d_name, ".") == 0) ||
+                (strcmp(de->d_name, "..") == 0)) {
+                continue;
+            }
+            char newDirPath[SIZE_OF_LINE * 2];
+            memset(newDirPath, 0, strlen(newDirPath));
+            strcat(newDirPath, pathOfFather);
+            strcat(newDirPath, "/");
+            strcat(newDirPath, de->d_name);
+            //realpath(pathOfFather, newDirPath);
+            // strcat(newDirPath, "/");
+            //strcat(newDirPath, de->d_name);
+            //  printf("new Dir:%s\n", newDirPath);//todo
+            DIR *newDir = opendir(newDirPath);
+            if (newDir == NULL) {
+                perror("cant enter to dir \n");
+            }
+            //printf("enter to dir %s\n", newDirPath);
+            findInDir(newDir, newDirPath, de->d_name, right);
+            closedir(newDir);
+            continue;
+        }//end of type 4=dir
+        if (checkForC(de->d_name)) {
+            flag = true;
+            char buf[SIZE_OF_LINE];
+            memset(buf, 0, strlen(buf));
+            strcat(buf, pathOfFather);
+            strcat(buf, "/");
+            strcat(buf, de->d_name);
+            //  printf("we found C file named: %s\t\t, our pathOfFather is: %s\n", buf, pathOfFather);
+            cFile(buf, right, nameOfFather);
+        }
+    }//end of while
+    if ((!flag) && (pathOfFather != NULL)) {
+        addEntry(nameOfFather, "0", "NO_C_FILE");
+    }
+}//end of findDir
+
+void findOfOneChild(char *pathOfChild, DIR *dr, char *pathOfFather, char *studName, char *rightAnswers) {
+    if (dr == NULL) {
+        pathOfChild = NULL;
+        return;
+    }
+    struct dirent *de;
+    while ((de = readdir(dr)) != NULL) {//scan the stuFiles
+        char newPathOfFather[SIZE_OF_LINE * 2];
+        memset(newPathOfFather, 0, sizeof(newPathOfFather));
+        strcat(newPathOfFather, pathOfFather);
+        strcat(newPathOfFather, "/");
+        strcat(newPathOfFather, de->d_name);
+        // printf("this file:%s\n", newPathOfFather);
+        if (de->d_type == 4) {
+            if ((strcmp(de->d_name, ".") == 0) || (strcmp(de->d_name, "..") == 0)) {
+                continue;
+            }
+            DIR *newDr = opendir(newPathOfFather);
+            findOfOneChild(pathOfChild, newDr, newPathOfFather, studName, rightAnswers);
+
+        } else if (checkForC(de->d_name)) {
+            strcpy(pathOfChild, newPathOfFather);
+            return;
+        }
+    }//end of loop
+}
+
+void cFile(char *path, char *right, char *nameOfFather) {
     makeCompile(path);
     if (strcmp(path, "COMPILATION_ERROR") == 0) {//compilation error case
-        addEntry(name, "20", "COMPILATION_ERROR");
+        addEntry(nameOfFather, "20", "COMPILATION_ERROR");
         return;
     }
     runCFile(path);
-    if (strcmp("TIMEOUT", path)) {//timeoutCase
-        addEntry(name, "40", "TIMEOUT");
+    if (strcmp("TIMEOUT", path) == 0) {//timeoutCase
+        addEntry(nameOfFather, "40", "TIMEOUT");
         return;
     }
     checkSemi(path, right);
-    if (strcmp("GREAT_JOB", path)) {
-        addEntry(name, "100", "GREAT_JOB");
+    if (strcmp("GREAT_JOB", path) == 0) {
+        addEntry(nameOfFather, "100", "GREAT_JOB");
         return;
-    } else if (strcmp("BAD_OUTPUT", path)) {
-        addEntry(name, "60", "BAD_OUTPUT");
+    } else if (strcmp("BAD_OUTPUT", path) == 0) {
+        addEntry(nameOfFather, "60", "BAD_OUTPUT");
         return;
-    } else if (strcmp("SIMILAR_OUTPUT", path)) {
-        addEntry(name, "80", "SIMILAR_OUTPUT");
+    } else if (strcmp("SIMILAR_OUTPUT", path) == 0) {
+        addEntry(nameOfFather, "80", "SIMILAR_OUTPUT");
         return;
     }
 
@@ -208,6 +286,8 @@ void checkSemi(char *stu, char *right) {
         if (WIFEXITED(status)) {
             status = WEXITSTATUS(status);
         }
+        kill(pid, SIGKILL);
+        printf("%s SATUS!!\n", status);
         if (status == 1) {
             strcpy(stu, "GREAT_JOB");
         } else if (status == 2) {
@@ -220,7 +300,7 @@ void checkSemi(char *stu, char *right) {
 }
 
 bool checkForC(char *name) {
-    return (name[strlen(name) - 2] == '.' && name[strlen(name) - 1] == 'c');
+    return (name[strlen(name) - 2] == '.' && ((name[strlen(name) - 1] == 'c') || (name[strlen(name) - 1] == 'C')));
 }
 
 void makeCompile(char *path) {
@@ -240,12 +320,12 @@ void makeCompile(char *path) {
             fail = WEXITSTATUS(status);
             if (fail) {
                 memset(path, 0, strlen(path));
+                //    printf("compile error\n");//todo
                 strcpy(path, "COMPILATION_ERROR");
             }
         }
-
+        kill(pid, SIGKILL);
     }//end of dad
-
 }//end of MakeCompile
 void runCFile(char *path) {
     pid_t pid;
@@ -256,20 +336,24 @@ void runCFile(char *path) {
         exit(-1);
     } else if (pid == 0) {//child
         execlp(STU_FILE_NAME_PATH, STU_FILE_NAME, NULL);
-
     } else {//dad
-        sleep(TIMEOUT);
-        if ((waitpid(pid, &status, WNOHANG)) != 0) {//finish case
-            return;
-        } else {
-            strcpy(path, "TIMEOUT");
-            kill(pid, SIGSTOP);
+        for (int i = 0; i < TIMEOUT; i++) {
+            sleep(1);
+            if ((waitpid(pid, &status, WNOHANG)) != 0) {//finish case
+                return;
+            }
         }
+        memset(path, 0, sizeof(path));
+        strcpy(path, "TIMEOUT");
+        kill(pid, SIGKILL);
     }
 }
 
+int i = 0;
+
 void addEntry(char *name, char *grade, char *note) {
     char entry[BUFFER_SIZE];
+    memset(entry, 0, strlen(entry));
     strcat(entry, name);
     strcat(entry, ",");
     strcat(entry, grade);
@@ -280,5 +364,6 @@ void addEntry(char *name, char *grade, char *note) {
         perror("CANT SAVE\n");
         exit(-1);
     }
+    printf("%d)we saved  the entey: %s", i++, entry);
 }
 
