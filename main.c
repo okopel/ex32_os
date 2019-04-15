@@ -17,7 +17,7 @@
 
 
 #define SIZE_OF_LINE 151
-#define BUFFER_SIZE 460
+#define BUFFER_SIZE ((SIZE_OF_LINE*3) +5)
 #define TIMEOUT 5
 #define RESULT "results.csv"
 #define STU_FILE_NAME "student.out"
@@ -27,35 +27,29 @@
 #define RESULT_OF_STU_TXT "res_of_running.txt"
 #define NO_C_FILE "NO_C_FILE"
 #define NO_C_FILE_GRADE "0"
-
 #define COMPILE_ERROR "COMPILATION_ERROR"
 #define COMPILE_ERROR_GRADE "20"
-
 #define TIME_OUT "TIMEOUT"
 #define TIME_OUT_GRADE "40"
-
 #define BAD_OUT "BAD_OUTPUT"
 #define BAD_OUT_GRADE "60"
-
 #define SIM_OUT "SIMILAR_OUTPUT"
 #define SIM_OUT_GRADE "80"
-
 #define GOOD_OUT "GREAT_JOB"
 #define GOOD_OUT_GRADE "100"
+#define ERROR_SYSTEM_CALL "Error in system call\n"
 
-/**
- * Recursiv func to find in dir
- * @param dr source dir
- * @param pathOfFather father of this dir(=name)
- * @param right the eight answers
- */
-void findInDir(DIR *dr, char *pathOfFather, char *nameOfFather, char *right);
 
 /**
  * compile c file
  * @param path the path of the c file
  */
 void makeCompile(char *path);
+
+/**
+ * print Error
+ */
+void errorInSystemCall();
 
 /**
  * work on c file
@@ -92,26 +86,35 @@ void checkSemi(char *stu);
  */
 void addEntry(char *name, char *grade, char *note);
 
-void findOfOneChild(char *pathOfChild, DIR *dr, char *pathOfMain, char *_name);
+/**
+ * find in any sub-dir of child
+ * @param pathOfChild path
+ * @param dr the dir pointer
+ * @param pathOfMain main path
+ * @param studName of student
+ */
+void findOfOneChild(char *pathOfChild, DIR *dr, char *pathOfFather, char *studName);
 
+/**
+ * Function to search in the whole class
+ * @param pathOfMain path to the main dir
+ */
 void findInMainDir(char *pathOfMain);
 
 //the csv of summeries the grades
 int resFile = 0;
-//the input of the program
-int inputFileUser = 0;
-//the right answers
-int rightAnswers = 0;
 
+//the right answers
 char *rightRes;
+
+//the input file path
 char *inputFilePath;
-int outRes = 0;//todo
 
 /**
  *
  * @param argc 2
  * @param argv [1]=path
- * @return
+ * @return 0 for seccess
  */
 int main(int argc, char **argv) {
     if (argc < 2) {
@@ -120,7 +123,7 @@ int main(int argc, char **argv) {
     //open the config file
     int in;
     if ((in = open(argv[1], O_RDONLY)) == -1) {
-        perror("cant open file\n");
+        errorInSystemCall();
         exit(-1);
     }
     char buffer[BUFFER_SIZE];
@@ -130,6 +133,7 @@ int main(int argc, char **argv) {
     //read the arguments
     read(in, buffer, BUFFER_SIZE);
     const char del[2] = {'\n', '\r'};
+    //parse
     path = strtok(buffer, del);
     input = strtok(NULL, del);
     right = strtok(NULL, del);
@@ -138,39 +142,24 @@ int main(int argc, char **argv) {
     inputFilePath = input;
     rightRes = right;
 
-/*
-    int inputFile;
-    if ((inputFile = open(input, O_RDONLY)) == -1) {
-        perror("ERROR inputFile\n");
-        exit(-1);
-    }
-    inputFileUser = inputFile;
-*/
-
     int results = open(RESULT, O_CREAT | O_RDWR | O_TRUNC, 0777);
     if (results < 0) {
-        perror("ERROR IN RESULT\n");
+        errorInSystemCall();
         exit(-1);
     }
     resFile = results;
 
-
-    int rightFile;
-    if ((rightFile = open(right, O_RDONLY)) == -1) {
-        //  close(inputFile);
-        perror("ERROR right\n");
-        exit(-1);
-    }
-    rightAnswers = rightFile;
-
-
     //find students in the main dir
     findInMainDir(path);
 
-    //printf("end of pro of %d\n", getpid());
-    //  close(inputFile);
-    close(rightFile);
     close(resFile);
+    if (unlink(STU_FILE_NAME) < 0) {
+        errorInSystemCall();
+    }
+    if (unlink(RESULT_OF_STU_TXT) < 0) {
+        errorInSystemCall();
+    }
+
     return 0;
 }
 
@@ -178,7 +167,7 @@ int main(int argc, char **argv) {
 void findInMainDir(char *pathOfMain) {
     DIR *dr = opendir(pathOfMain);
     if (dr == NULL) {
-        perror("CANT OPEN PATH\n");
+        errorInSystemCall();
         exit(-1);
     }
     struct dirent *de;
@@ -190,23 +179,27 @@ void findInMainDir(char *pathOfMain) {
             }
             char pathOfChild[2 * SIZE_OF_LINE];
             memset(pathOfChild, 0, sizeof(pathOfChild));
+
             char newPathOfMain[2 * SIZE_OF_LINE];
             memset(newPathOfMain, 0, sizeof(newPathOfMain));
             strcat(newPathOfMain, pathOfMain);
             strcat(newPathOfMain, "/");
             strcat(newPathOfMain, de->d_name);
             DIR *newDir = opendir(newPathOfMain);
+            //recursive search
             findOfOneChild(pathOfChild, newDir, newPathOfMain, de->d_name);
+            closedir(newDir);
             if (pathOfChild[0] == 0) {//there isnt C file
                 addEntry(de->d_name, NO_C_FILE_GRADE, NO_C_FILE);
                 continue;
-            } else {
+            } else {//there is c file!
                 cFile(pathOfChild, de->d_name);
             }
         }
     }
-
+    closedir(dr);
 }
+
 
 void findOfOneChild(char *pathOfChild, DIR *dr, char *pathOfFather, char *studName) {
     if (dr == NULL) {
@@ -219,14 +212,15 @@ void findOfOneChild(char *pathOfChild, DIR *dr, char *pathOfFather, char *studNa
         strcat(newPathOfFather, pathOfFather);
         strcat(newPathOfFather, "/");
         strcat(newPathOfFather, de->d_name);
-        if (de->d_type == 4) {
+        if (de->d_type == 4) {//dir case
             if ((strcmp(de->d_name, ".") == 0) || (strcmp(de->d_name, "..") == 0)) {
                 continue;
             }
             DIR *newDr = opendir(newPathOfFather);
+            //recursive search
             findOfOneChild(pathOfChild, newDr, newPathOfFather, studName);
-
-        } else if (checkForC(de->d_name)) {
+            closedir(newDr);
+        } else if (checkForC(de->d_name)) {//we found c fils
             strcpy(pathOfChild, newPathOfFather);
             return;
         }
@@ -234,19 +228,20 @@ void findOfOneChild(char *pathOfChild, DIR *dr, char *pathOfFather, char *studNa
 }
 
 void cFile(char *path, char *nameOfFather) {
-    // printf("c file of:%s\n", path);//todo
+    //compile the c fils
     makeCompile(path);
-    // printf("makeCompilereturn:%s\n", path);
     if (strcmp(path, COMPILE_ERROR) == 0) {//compilation error case
         addEntry(nameOfFather, COMPILE_ERROR_GRADE, COMPILE_ERROR);
         return;
     }
+    //run the good compilind
     runCFile(path);
-    // printf("after run c :%s\n", path);
+    //check for timeout
     if (strcmp(TIME_OUT, path) == 0) {//timeoutCase
         addEntry(nameOfFather, TIME_OUT_GRADE, TIME_OUT);
         return;
     }
+    //check the output of the program
     checkSemi(path);
     if (strcmp(GOOD_OUT, path) == 0) {
         addEntry(nameOfFather, GOOD_OUT_GRADE, GOOD_OUT);
@@ -258,24 +253,21 @@ void cFile(char *path, char *nameOfFather) {
         addEntry(nameOfFather, SIM_OUT_GRADE, SIM_OUT);
         return;
     }
-
-}
+}//end of c file
 
 void checkSemi(char *stu) {
-
     pid_t pid;
     int status;
-
-    //  open(RESULT_OF_STU_TXT,O_WRONLY|O_CREAT);
     pid = fork();
     if (pid < 0) {
-        perror("ERROR in Check Semi\n");
+        errorInSystemCall();
         exit(-1);
     } else if (pid == 0) {//child
+        //run compare from part A
         execlp(CMP_PATH, CMP, RESULT_OF_STU_TXT, rightRes, NULL);
     } else {//dad
         if ((waitpid(pid, &status, 0)) < 0) {
-            perror("error while calling wait()");
+            errorInSystemCall();
             exit(-1);
         }
         if (WIFEXITED(status)) {
@@ -304,21 +296,21 @@ void makeCompile(char *path) {
     pid_t pid;
     pid = fork();
     if (pid < 0) {
-        perror("ERROR forking\n");
+        errorInSystemCall();
         exit(-1);
     } else if (pid == 0) {//child
-        // printf("co of:%s\n", path);
+        //compile cmd
         execlp("gcc", "gcc", path, "-o", STU_FILE_NAME, NULL);
     }  //dad
     if (wait(&status) < 0) {
-        perror("CANT WAIT!\n");
+        errorInSystemCall();
         exit(-1);
     }
+    //check for succsess in compiling
     if (WIFEXITED(status)) {
         fail = WEXITSTATUS(status);
         if (fail) {
-            memset(path, 0, strlen(path));
-            // printf("compile error\n");//todo
+            memset(path, 0, sizeof(path));
             strcpy(path, COMPILE_ERROR);
         }
     }
@@ -327,56 +319,44 @@ void makeCompile(char *path) {
 
 
 void runCFile(char *path) {
-    //printf("start running\n");
     pid_t pid;
     int status;
     int fdin = open(inputFilePath, O_RDONLY);
     int fdout = open(RESULT_OF_STU_TXT, O_CREAT | O_RDWR | O_TRUNC, 0777);
     pid = fork();
     if (pid < 0) {
-        perror("CANT FORK IN RUN\n");
+        errorInSystemCall();
         exit(-1);
     }
     if (pid == 0) {//child
         if (dup2(fdin, 0) < 0) {
-            perror("DUP2in\n");
+            errorInSystemCall();
             exit(-1);
         }
         if (dup2(fdout, 1) < 0) {
-            perror("DUP2out\n");
+            errorInSystemCall();
             exit(-1);
         }
-        //execlp(STU_FILE_NAME_PATH, STU_FILE_NAME, NULL);
-        execlp("./student.out", "student.out", NULL);
+        //run
+        execlp(STU_FILE_NAME_PATH, STU_FILE_NAME, NULL);
     }
     close(fdin);
     close(fdout);
     for (int i = 0; i < TIMEOUT; i++) {
         sleep(1);
         if ((waitpid(pid, &status, WNOHANG)) != 0) {//finish case
-            //  kill(pid, SIGKILL);
-            // printf("done without timeout\n");
-            close(fdin);
-            close(fdout);
             return;
         }
-        // printf("loop %d\n", i);
     }
     memset(path, 0, sizeof(path));
-    //printf("timeout\n");
-    strcpy(path, "TIMEOUT");
+    strcpy(path, TIME_OUT);
     kill(pid, SIGSTOP);
-    close(fdin);
-    close(fdout);
-
-
 }
 
-int i = 1;
 
 void addEntry(char *name, char *grade, char *note) {
     char entry[BUFFER_SIZE];
-    memset(entry, 0, strlen(entry));
+    memset(entry, 0, sizeof(entry));
     strcat(entry, name);
     strcat(entry, ",");
     strcat(entry, grade);
@@ -384,9 +364,13 @@ void addEntry(char *name, char *grade, char *note) {
     strcat(entry, note);
     strcat(entry, "\n");
     if (write(resFile, entry, sizeof(entry)) < 0) {
-        perror("CANT SAVE\n");
+        errorInSystemCall();
         exit(-1);
     }
-    printf("%d)we saved  the entey: %s", i++, entry);
+    printf("we saved the entery: %s", entry);
+}
+
+void errorInSystemCall() {
+    write(2, ERROR_SYSTEM_CALL, sizeof(ERROR_SYSTEM_CALL));
 }
 
