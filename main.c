@@ -101,6 +101,11 @@ void findOfOneChild(char *pathOfChild, DIR *dr, char *pathOfFather, char *studNa
  */
 void findInMainDir(char *pathOfMain);
 
+/**
+ *close the open files at error or EOF
+ */
+void closeFilesAndExit(int flag);
+
 //the csv of summeries the grades
 int resFile = 0;
 
@@ -109,6 +114,7 @@ char *rightRes;
 
 //the input file path
 char *inputFilePath;
+
 
 /**
  *
@@ -124,7 +130,7 @@ int main(int argc, char **argv) {
     int in;
     if ((in = open(argv[1], O_RDONLY)) == -1) {
         errorInSystemCall();
-        exit(-1);
+        closeFilesAndExit(-1);
     }
     char buffer[BUFFER_SIZE];
     char *path;
@@ -145,7 +151,7 @@ int main(int argc, char **argv) {
     int results = open(RESULT, O_CREAT | O_RDWR | O_TRUNC, 0777);
     if (results < 0) {
         errorInSystemCall();
-        exit(-1);
+        closeFilesAndExit(-1);
     }
     resFile = results;
 
@@ -153,12 +159,7 @@ int main(int argc, char **argv) {
     findInMainDir(path);
 
     close(resFile);
-    if (unlink(STU_FILE_NAME) < 0) {
-        errorInSystemCall();
-    }
-    if (unlink(RESULT_OF_STU_TXT) < 0) {
-        errorInSystemCall();
-    }
+    closeFilesAndExit(1);
 
     return 0;
 }
@@ -168,7 +169,7 @@ void findInMainDir(char *pathOfMain) {
     DIR *dr = opendir(pathOfMain);
     if (dr == NULL) {
         errorInSystemCall();
-        exit(-1);
+        closeFilesAndExit(-1);
     }
     struct dirent *de;
     while ((de = readdir(dr)) != NULL) {//move over students
@@ -261,14 +262,14 @@ void checkSemi(char *stu) {
     pid = fork();
     if (pid < 0) {
         errorInSystemCall();
-        exit(-1);
+        closeFilesAndExit(-1);
     } else if (pid == 0) {//child
         //run compare from part A
         execlp(CMP_PATH, CMP, RESULT_OF_STU_TXT, rightRes, NULL);
     } else {//dad
         if ((waitpid(pid, &status, 0)) < 0) {
             errorInSystemCall();
-            exit(-1);
+            closeFilesAndExit(-1);
         }
         if (WIFEXITED(status)) {
             status = WEXITSTATUS(status);
@@ -297,14 +298,14 @@ void makeCompile(char *path) {
     pid = fork();
     if (pid < 0) {
         errorInSystemCall();
-        exit(-1);
+        closeFilesAndExit(-1);
     } else if (pid == 0) {//child
         //compile cmd
         execlp("gcc", "gcc", path, "-o", STU_FILE_NAME, NULL);
     }  //dad
     if (wait(&status) < 0) {
         errorInSystemCall();
-        exit(-1);
+        closeFilesAndExit(-1);
     }
     //check for succsess in compiling
     if (WIFEXITED(status)) {
@@ -326,16 +327,16 @@ void runCFile(char *path) {
     pid = fork();
     if (pid < 0) {
         errorInSystemCall();
-        exit(-1);
+        closeFilesAndExit(-1);
     }
     if (pid == 0) {//child
         if (dup2(fdin, 0) < 0) {
             errorInSystemCall();
-            exit(-1);
+            closeFilesAndExit(-1);
         }
         if (dup2(fdout, 1) < 0) {
             errorInSystemCall();
-            exit(-1);
+            closeFilesAndExit(-1);
         }
         //run
         execlp(STU_FILE_NAME_PATH, STU_FILE_NAME, NULL);
@@ -366,12 +367,24 @@ void addEntry(char *name, char *grade, char *note) {
     strcat(entry, "\n");
     if (write(resFile, entry, sizeof(entry)) < 0) {
         errorInSystemCall();
-        exit(-1);
+        closeFilesAndExit(-1);
     }
-    // printf("we saved the entery: %s", entry);
 }
 
 void errorInSystemCall() {
     write(2, ERROR_SYSTEM_CALL, sizeof(ERROR_SYSTEM_CALL));
+
+}
+
+void closeFilesAndExit(int flag) {
+
+    if (unlink(STU_FILE_NAME) < 0) {
+        errorInSystemCall();
+    }
+    if (unlink(RESULT_OF_STU_TXT) < 0) {
+        errorInSystemCall();
+    }
+    exit(flag);
+
 }
 
